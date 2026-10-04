@@ -101,7 +101,8 @@ public final class DynamicPixelOracle {
         double r=((rgb>>>16)&255)/255.0,g=((rgb>>>8)&255)/255.0,b=(rgb&255)/255.0;
         if(Math.max(r,Math.max(g,b))<.10)return null;
         if(r>1.65*g&&r>1.65*b)return Marker.RED;
-        if(b>1.35*r&&b>1.20*g&&r>0&&g/r<1.5)return Marker.BLUE;
+        // Saturated concrete only: the previous ratios also classified the real pale blue sky.
+        if(b>1.80*r&&b>1.55*g&&r>0&&g/r<1.5)return Marker.BLUE;
         if(g>1.30*r&&g>1.65*b)return Marker.LIME;
         if(r>1.65*b&&g>1.65*b&&r/Math.max(g,.001)>.65&&r/Math.max(g,.001)<1.65)return Marker.YELLOW;return null;
     }

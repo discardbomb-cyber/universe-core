@@ -95,7 +95,7 @@ public final class DynamicGeometryMapper {
         public Fixture {
             Objects.requireNonNull(markerOrigin);
             moving = List.copyOf(moving); stationary = List.copyOf(stationary);
-            if (moving.size() != 10 || stationary.size() != 136
+            if (moving.size() != 10 || stationary.size() != 129
                     || !cellMap(moving).equals(cellMap(expectedMoving(markerOrigin)))
                     || !cellMap(stationary).equals(cellMap(expectedStationary())))
                 throw refusal("Fixture manifest differs from the fixed board/floor/wall/landmark geometry");
@@ -493,10 +493,10 @@ public final class DynamicGeometryMapper {
         return List.copyOf(cubes);
     }
     private static List<Cube> expectedStationary() {
-        List<Cube> cubes = new ArrayList<>(136);
+        List<Cube> cubes = new ArrayList<>(129);
         for (int x = -5; x <= 5; x++) for (int z = -5; z <= 5; z++)
             cubes.add(new Cube(new Cell(x, 80, z), Material.NEUTRAL_OPAQUE));
-        for (int x = 1; x <= 2; x++) for (int y = 84; y <= 90; y++)
+        for (int x = 2; x <= 2; x++) for (int y = 84; y <= 90; y++)
             cubes.add(new Cube(new Cell(x, y, -4), Material.MAGENTA_WALL));
         cubes.add(new Cube(new Cell(-4, 83, -6), Material.CYAN_LANDMARK));
         return List.copyOf(cubes);

@@ -17,6 +17,10 @@ public final class DynamicFrameCapture {
     private String uuid;
 
     public void remember(RenderLevelStageEvent event, ClientSubLevel body, long frameId) {
+        Minecraft mc=Minecraft.getInstance();
+        if(mc.level==null||mc.player==null||body.getLevel()!=mc.level||!mc.player.isSpectator()
+                ||mc.options.fov().get()!=70||Double.compare(mc.options.fovEffectScale().get(),0.0)!=0)
+            throw new IllegalStateException("World observation requires current spectator camera with base FOV70/effect0");
         // Pinned renderer uses renderPose() with timer partial TRUE; do not mutate its cache with FALSE.
         var pose = body.renderPose();
         var p = pose.position(); var q = pose.orientation(); var r = pose.rotationPoint(); var scale = pose.scale();
@@ -37,7 +41,10 @@ public final class DynamicFrameCapture {
         data.put("modelView",modelView); data.put("projection",projection);
         double fov=Math.toDegrees(2*Math.atan(1.0/projection[5]));
         if(!Double.isFinite(fov)||fov<=0||fov>=179)throw new IllegalStateException("Invalid actual projection FOV");
+        if(Math.abs(fov-70)>.1)throw new IllegalStateException("Actual world projection FOV must be 70 before capture: "+fov);
         data.put("projectionVerticalFovDegrees",fov);
+        data.put("actualCameraBaseFov",mc.options.fov().get());
+        data.put("actualCameraFovEffectScale",mc.options.fovEffectScale().get());
         var camera = event.getCamera().getPosition();
         data.put("camera", new double[]{camera.x, camera.y, camera.z});
         var cameraQ=event.getCamera().rotation();
@@ -81,6 +88,7 @@ public final class DynamicFrameCapture {
                 || mc.level == null || mc.player == null || mc.screen != null || mc.getOverlay() != null || mc.isPaused()
                 || !mc.player.isSpectator() || mc.player.distanceToSqr(0,94,-12)>1
                 || Math.abs(mc.player.getYRot())>1 || Math.abs(mc.player.getXRot()-30)>1
+                || mc.options.fov().get()!=70 || Double.compare(mc.options.fovEffectScale().get(),0.0)!=0
                 || mc.getSingleplayerServer() != null || mc.getConnection() == null
                 || !(mc.getConnection().getConnection().getRemoteAddress() instanceof InetSocketAddress endpoint)
                 || endpoint.isUnresolved() || !endpoint.getAddress().isLoopbackAddress() || endpoint.getPort() != 25575)

@@ -76,10 +76,10 @@ public final class DynamicProbeServer {
             if(!level.getBlockState(new BlockPos(-4,83,-6)).isAir())throw new IllegalStateException("Landmark volume obstructed");
             for(BlockPos p:BlockPos.betweenClosed(-5,80,-5,5,92,5))if(!level.getBlockState(p).isAir())throw new IllegalStateException("Fixture obstructed");
             for(BlockPos p:BlockPos.betweenClosed(-5,80,-5,5,80,5))ordinary(p,Blocks.SMOOTH_STONE.defaultBlockState());
-            for(BlockPos p:BlockPos.betweenClosed(1,84,-4,2,90,-4))ordinary(p,Blocks.MAGENTA_CONCRETE.defaultBlockState());
+            for(BlockPos p:BlockPos.betweenClosed(2,84,-4,2,90,-4))ordinary(p,Blocks.MAGENTA_CONCRETE.defaultBlockState());
             ordinary(new BlockPos(-4,83,-6),Blocks.CYAN_CONCRETE.defaultBlockState());
             var manifest=DynamicProtocol.envelope(Map.of("scenario","dynamic","cameraPlayerPosition",new double[]{0,94,-12},
-                    "cameraYaw",0,"cameraPitch",30,"fixturePolicy",policy.metadata(),"bodyBaselineAroundY",88,"wallMin",new int[]{1,84,-4},
+                    "cameraYaw",0,"cameraPitch",30,"fixturePolicy",policy.metadata(),"bodyBaselineAroundY",88,"wallMin",new int[]{2,84,-4},
                     "wallMax",new int[]{2,90,-4},"ordinaryFixtureVerified",verifyOrdinaryFixture(),"landmark",Map.of("position",new int[]{-4,83,-6},
                         "block","minecraft:cyan_concrete","actualBlockVerified",level.getBlockState(new BlockPos(-4,83,-6)).is(Blocks.CYAN_CONCRETE))));
             manifest.put("actualCommonAttemptUdp",dev.ryanhcode.sable.SableConfig.ATTEMPT_UDP_NETWORKING.getAsBoolean());
@@ -103,7 +103,7 @@ public final class DynamicProbeServer {
     private static void ordinary(BlockPos p,BlockState state){BlockPos key=p.immutable();changed.putIfAbsent(key,level.getBlockState(key));level.setBlock(key,state,Block.UPDATE_ALL);}
     private static boolean verifyOrdinaryFixture(){
         for(BlockPos p:BlockPos.betweenClosed(-5,80,-5,5,80,5))if(!level.getBlockState(p).is(Blocks.SMOOTH_STONE))throw new IllegalStateException("Actual floor changed");
-        for(BlockPos p:BlockPos.betweenClosed(1,84,-4,2,90,-4))if(!level.getBlockState(p).is(Blocks.MAGENTA_CONCRETE))throw new IllegalStateException("Actual wall changed");
+        for(BlockPos p:BlockPos.betweenClosed(2,84,-4,2,90,-4))if(!level.getBlockState(p).is(Blocks.MAGENTA_CONCRETE))throw new IllegalStateException("Actual wall changed");
         if(!level.getBlockState(new BlockPos(-4,83,-6)).is(Blocks.CYAN_CONCRETE))throw new IllegalStateException("Actual landmark changed");
         return true;
     }

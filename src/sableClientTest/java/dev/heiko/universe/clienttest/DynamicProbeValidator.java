@@ -142,7 +142,7 @@ public final class DynamicProbeValidator {
         var manifest=read(serverDir.resolve("dynamic-fixture-manifest.json"));envelope(manifest,serverNonce,false);
         equal(text(manifest,"scenario"),"dynamic","Fixture scenario");require(bool(manifest,"ordinaryFixtureVerified"),"Actual ordinary geometry was not verified");
         require(bool(manifest,"actualCommonAttemptUdp")!=tcpRequested,"Actual server transport setting mismatch");
-        equalNumbers(numbers(manifest,"wallMin",3),new double[]{1,84,-4},0,"Wall min");
+        equalNumbers(numbers(manifest,"wallMin",3),new double[]{2,84,-4},0,"Wall min");
         equalNumbers(numbers(manifest,"wallMax",3),new double[]{2,90,-4},0,"Wall max");
         cameraConfiguration(manifest);landmark(object(manifest,"landmark"));policy(object(manifest,"fixturePolicy"));
         require(number(manifest,"bodyBaselineAroundY")==88,"Unexpected initial fixture height");
@@ -279,13 +279,20 @@ public final class DynamicProbeValidator {
         equal(text(frame,"visualAcceptance"),"NOT_EVALUATED","Raw frame visual status");pose(frame);
         require(bool(frame,"actualCommonAttemptUdp")!=tcpRequested&&bool(frame,"actualClientAttemptUdp")!=tcpRequested,"Actual client transport settings mismatch");
         equalNumbers(numbers(frame,"scale",3),new double[]{1,1,1},0,"Unit actual render scale required");
-        numbers(frame,"rotationPoint",3);numbers(frame,"camera",3);numbers(frame,"modelView",16);numbers(frame,"projection",16);
+        numbers(frame,"rotationPoint",3);numbers(frame,"camera",3);numbers(frame,"modelView",16);double[] projection=numbers(frame,"projection",16);
         quaternion(numbers(frame,"cameraQuaternion",4));
         equalNumbers(numbers(frame,"cameraPlayerPosition",3),new double[]{0,94,-12},1,"Actual camera player position");
         require(Math.abs(number(frame,"cameraPlayerYaw"))<=1&&Math.abs(number(frame,"cameraPlayerPitch")-30)<=1,"Actual camera angles");
+        require(integer(frame,"actualCameraBaseFov")==70&&number(frame,"actualCameraFovEffectScale")==0,
+                "Actual owned fixed camera options required");
         require(Math.abs(number(frame,"projectionVerticalFovDegrees")-70)<=.1,"Pinned actual FOV 70 required");
+        require(projection[5]>0,"Positive actual vertical projection scale required");
+        double derivedFov=Math.toDegrees(2*Math.atan(1.0/projection[5]));
+        require(Double.isFinite(derivedFov)&&Math.abs(derivedFov-70)<=.1
+                &&Math.abs(derivedFov-number(frame,"projectionVerticalFovDegrees"))<=1e-4
+                &&Math.abs(projection[0]-projection[5]*540.0/960.0)<=1e-6,"Actual matrix/scalar FOV/aspect mismatch");
         equal(text(frame,"posePartialMode"),"ACTUAL_RENDERER_TIMER_TRUE","Actual renderer interpolation mode");landmark(object(frame,"landmark"));
-        require(text(frame,"remoteEndpoint").matches("(?:/)?(?:127\\.0\\.0\\.1|localhost/127\\.0\\.0\\.1|\\[0:0:0:0:0:0:0:1\\]|\\[::1\\]):25575"),"Actual loopback endpoint");
+        require(text(frame,"remoteEndpoint").matches("(?:/)?(?:127\\.0\\.0\\.1|127\\.0\\.0\\.1/127\\.0\\.0\\.1|localhost/127\\.0\\.0\\.1|\\[0:0:0:0:0:0:0:1\\]|\\[::1\\]):25575"),"Actual loopback endpoint");
         captures.put(file,frame);return frame;
     }
 
@@ -307,6 +314,20 @@ public final class DynamicProbeValidator {
         require(integer(state,"ordinaryBlocksRemaining")==0&&integer(state,"forcedChunksRemaining")==0&&text(state,"error").isEmpty(),"Actual cleanup failure");
         require(integer(state,"writtenAtMillis")>=integer(read(clientDir.resolve("dynamic-complete-ack.json")),"writtenAtMillis"),"Cleanup precedes final receipt");
         measurements.put("cleanup",state);check("nativeListenerPauseAndWorldOwnershipClean");
+        var camera=object(clientReport,"cameraOptions");
+        require(bool(camera,"claimed")&&bool(camera,"restored")&&text(camera,"error").isEmpty(),"Camera option ownership not restored");
+        require(bool(camera,"matrixReady")&&integer(camera,"settlingSkippedWorldFrames")>=0
+                &&integer(camera,"settlingSkippedWorldFrames")<=300,"Bounded real camera settling evidence required");
+        require(integer(camera,"baseFov")==70&&number(camera,"fixtureFovEffectScale")==0,"Fixed camera policy mismatch");
+        double original=number(camera,"originalFovEffectScale");
+        require(original>=0&&original<=1&&number(camera,"restoredFovEffectScale")==original
+                &&number(camera,"persistedFovEffectScale")==original,"Original camera option was not preserved");
+        Path options=inside(root.resolve(".tooling/client-runs/"+runId+"/client/options.txt"));
+        hash(options,131_072);List<String> saved=Files.readAllLines(options).stream().filter(line->line.startsWith("fovEffectScale:")).toList();
+        require(saved.size()==1,"Missing/duplicate persisted camera option");
+        double persisted=Double.parseDouble(saved.get(0).substring("fovEffectScale:".length()));
+        require(Double.isFinite(persisted)&&persisted==original,"Actual options file differs from original camera value");
+        measurements.put("cameraOptions",camera);check("actualCameraOptionAndPersistedRestore");
     }
 
     private void pixels()throws Exception {

@@ -12,6 +12,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.OptionInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.Blocks;
 import net.neoforged.api.distmarker.Dist;
@@ -20,6 +21,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
+import net.neoforged.neoforge.event.GameShuttingDownEvent;
 
 /** Candidate: actual live client state and PNGs; ACK is not pixel/visual PASS. */
 @EventBusSubscriber(modid=ClientProbeMod.ID,value=Dist.CLIENT)
@@ -35,6 +37,13 @@ public final class DynamicProbeClient {
     private static JsonObject state;
     private static ClientSubLevel body;
     private static boolean worldRendered,finished;
+    private static OptionInstance<Double> ownedFovEffect;
+    private static Double originalFovEffect,persistedFovEffect;
+    private static boolean cameraOptionClaimed,cameraOptionRestored;
+    private static String cameraCleanupError="";
+    private static long cameraSettlingStarted;
+    private static int cameraSettlingFrames;
+    private static boolean cameraMatrixReady;
     private DynamicProbeClient(){}
 
     @SubscribeEvent public static void tick(ClientTickEvent.Post event){
@@ -42,6 +51,7 @@ public final class DynamicProbeClient {
         if(started==0)started=System.nanoTime();
         try{
             directory=ClientProbeMod.claim("client");
+            claimCameraOption(Minecraft.getInstance());
             if(System.nanoTime()-started>120_000_000_000L)throw new IllegalStateException("Client timeout 120s");
             Path file=directory.getParent().resolve("server/dynamic-state.json");if(!Files.exists(file))return;
             state=DynamicProtocol.read(file);uuid=state.get("uuid").getAsString();DynamicProtocol.envelope(state,uuid);
@@ -87,6 +97,19 @@ public final class DynamicProbeClient {
             if(state==null||!ready(body))return;
             Minecraft mc=Minecraft.getInstance();endpoint(mc);
             if(mc.screen!=null||mc.getOverlay()!=null||mc.isPaused())return;
+            claimCameraOption(mc);
+            double verticalScale=event.getProjectionMatrix().m11();
+            double actualFov=Math.toDegrees(2*Math.atan(1.0/verticalScale));
+            if(!Double.isFinite(verticalScale)||verticalScale<=0||!Double.isFinite(actualFov))
+                throw new IllegalStateException("Invalid actual camera projection during settling");
+            if(Math.abs(actualFov-70)>.1){
+                if(cameraMatrixReady)throw new IllegalStateException("Fixed camera projection changed after settling: "+actualFov);
+                if(cameraSettlingStarted==0)cameraSettlingStarted=System.nanoTime();
+                if(++cameraSettlingFrames>300||System.nanoTime()-cameraSettlingStarted>5_000_000_000L)
+                    throw new IllegalStateException("Actual camera did not settle to FOV70 within bounded warmup");
+                return; // Wait for vanilla smoothing; no remembered frame, PNG, warm-frame count or cache mutation.
+            }
+            cameraMatrixReady=true;
             frameId++;rememberedFrame=frameId;worldRendered=true;
             capture.remember(event,body,frameId);
         }catch(Throwable error){finish("FAILED",error.toString());}
@@ -124,17 +147,74 @@ public final class DynamicProbeClient {
         if(mc.getSingleplayerServer()!=null||mc.getConnection()==null||!(mc.getConnection().getConnection().getRemoteAddress() instanceof InetSocketAddress address)
                 ||address.isUnresolved()||!address.getAddress().isLoopbackAddress()||address.getPort()!=25575)throw new IllegalStateException("Real loopback endpoint required");
     }
+    private static void claimCameraOption(Minecraft mc){
+        if(!mc.isSameThread())throw new IllegalStateException("Camera option requires client thread");
+        if(mc.options.fov().get()!=70)throw new IllegalStateException("Fixture base FOV must remain 70");
+        var option=mc.options.fovEffectScale();
+        if(!cameraOptionClaimed){
+            double previous=option.get();
+            if(!Double.isFinite(previous)||previous<0||previous>1)throw new IllegalStateException("Invalid original FOV effect scale");
+            ownedFovEffect=option;originalFovEffect=previous;cameraOptionClaimed=true;
+            // Disable the vanilla/NeoForge flying multiplier in this disposable client, without changing projection data.
+            option.set(0.0);
+        }
+        if(option!=ownedFovEffect||Double.compare(option.get(),0.0)!=0)
+            throw new IllegalStateException("Owned FOV effect option changed during fixture");
+    }
+    private static void restoreCameraOption()throws Exception{
+        if(ownedFovEffect==null)return;
+        Minecraft mc=Minecraft.getInstance();
+        if(!mc.isSameThread()||mc.options.fovEffectScale()!=ownedFovEffect)
+            throw new IllegalStateException("Lost camera option identity/thread ownership");
+        double current=ownedFovEffect.get();
+        if(Double.compare(current,0.0)!=0&&Double.compare(current,originalFovEffect)!=0)
+            throw new IllegalStateException("Foreign FOV effect change; refusing to overwrite it");
+        ownedFovEffect.set(originalFovEffect);
+        if(Double.compare(ownedFovEffect.get(),originalFovEffect)!=0)throw new IllegalStateException("FOV effect restore failed");
+        // Minecraft may autosave options while the world is open. Restore the owned value on disk as well.
+        mc.options.save();
+        Path file=mc.gameDirectory.toPath().resolve("options.txt");
+        if(Files.size(file)>131_072)throw new IllegalStateException("Options cleanup byte cap");
+        Double saved=null;
+        for(String line:Files.readAllLines(file))if(line.startsWith("fovEffectScale:")){
+            if(saved!=null)throw new IllegalStateException("Duplicate persisted FOV effect option");
+            saved=Double.parseDouble(line.substring("fovEffectScale:".length()));
+        }
+        if(saved==null||!Double.isFinite(saved)||Double.compare(saved,originalFovEffect)!=0)
+            throw new IllegalStateException("Persisted FOV effect restore failed");
+        persistedFovEffect=saved;cameraOptionRestored=true;ownedFovEffect=null;
+    }
+    private static Map<String,Object> cameraOptionsReport(){
+        Map<String,Object> report=new LinkedHashMap<>();
+        report.put("claimed",cameraOptionClaimed);report.put("baseFov",Minecraft.getInstance().options.fov().get());
+        report.put("fixtureFovEffectScale",0.0);report.put("originalFovEffectScale",originalFovEffect);
+        report.put("restoredFovEffectScale",Minecraft.getInstance().options.fovEffectScale().get());
+        report.put("persistedFovEffectScale",persistedFovEffect);report.put("restored",cameraOptionRestored);
+        report.put("settlingSkippedWorldFrames",cameraSettlingFrames);report.put("matrixReady",cameraMatrixReady);
+        report.put("error",cameraCleanupError);return report;
+    }
+    @SubscribeEvent public static void shutdown(GameShuttingDownEvent event){
+        if(!DynamicProtocol.ENABLED)return;
+        if(!finished){finish("FAILED","Client shutdown before terminal receipt",false);return;}
+        try{restoreCameraOption();}
+        catch(Throwable error){org.slf4j.LoggerFactory.getLogger(DynamicProbeClient.class).error("Camera option shutdown cleanup failed",error);}
+    }
     private static void finish(String status,String error){
+        finish(status,error,true);
+    }
+    private static void finish(String status,String error,boolean requestStop){
         if(finished)return;finished=true;
+        try{restoreCameraOption();}
+        catch(Throwable cleanup){cameraCleanupError=cleanup.toString();status="FAILED";error=error.isEmpty()?cameraCleanupError:error+"; camera cleanup: "+cameraCleanupError;}
         try{ClientProbeMod.report("client","DYNAMIC_STAGE_"+stage,status,Map.of("uuid",uuid,"acknowledgedStage",acknowledged,
-                "frames",allFrames,"liveFrames",liveFrames,"error",error,"visualAcceptance","NOT_EVALUATED"));
+                "frames",allFrames,"liveFrames",liveFrames,"error",error,"visualAcceptance","NOT_EVALUATED","cameraOptions",cameraOptionsReport()));
             if(status.equals("DYNAMIC_CAPTURED_PENDING_VALIDATION"))
                 ClientProbeMod.atomicJson(directory.resolve("dynamic-complete-ack.json"),DynamicProtocol.envelope(Map.of("uuid",uuid,
                         "status",status,"acknowledgedStage",acknowledged,"heldFrames",allFrames.size()-liveFrames,
                         "liveFrames",liveFrames,"stateEpoch",epoch,"serverRuntimeNonce",serverRuntime)),false);
         }
         catch(Exception failure){org.slf4j.LoggerFactory.getLogger(DynamicProbeClient.class).error("Dynamic client report failure",failure);}
-        finally{Minecraft.getInstance().stop();}
+        finally{if(requestStop)Minecraft.getInstance().stop();}
     }
 }
 
