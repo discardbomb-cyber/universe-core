@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mods]]
+modId="universe_gravity_runtime_test"
+version="0.1.0"
+displayName="Universe Gravity Runtime Test"
+description='''Opt-in disposable dedicated-server unload and new-process saved-world probes. NOT_RUN candidate.'''
+[[dependencies.universe_gravity_runtime_test]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.251]"
+ordering="NONE"
+side="SERVER"
+[[dependencies.universe_gravity_runtime_test]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1]"
+ordering="NONE"
+side="SERVER"
+[[dependencies.universe_gravity_runtime_test]]
+modId="universe"
+type="required"
+versionRange="[0,)"
+ordering="AFTER"
+side="SERVER"

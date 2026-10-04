@@ -1,0 +1,22 @@
+{
+  "key.categories.universe": "Universe",
+  "key.universe.map": "Open Universe map",
+  "map.universe.title": "Universe map — prototype",
+  "map.universe.demo": "Demonstration metadata — no real discoveries",
+  "map.universe.catalog_notice": "Catalog metadata — not visitable worlds",
+  "map.universe.catalog_counts": "Sector (0, 0, 0): %s systems, %s bodies. Grid is demonstrative; no discoveries or travel access implied.",
+  "map.universe.catalog_waiting": "Requesting catalog for sector (0, 0, 0). Grid is demonstrative; discoveries, scans, markers and routes are unavailable.",
+  "map.universe.catalog_timeout": "No catalog reply received. Grid is demonstrative. Reopen the map to retry; no discoveries or travel access implied.",
+  "map.universe.galaxy.milky_way": "Milky Way",
+  "map.universe.galaxy.silent_crown": "Silent Crown",
+  "map.universe.galaxy.crimson_forge": "Crimson Forge",
+  "map.universe.scale.chunks": "1: Chunks",
+  "map.universe.scale.regions": "2: Regions",
+  "map.universe.scale.planet": "3: Planet",
+  "map.universe.scale.system": "4: System",
+  "map.universe.scale.sectors": "5: Sectors",
+  "map.universe.status.prototype": "Status: UI prototype; travel unavailable",
+  "map.universe.status.planned": "Status: planned; galaxy unavailable",
+  "map.universe.no_data": "No server map adapter connected. This grid is a layout demonstration. Discoveries, scans, markers and routes are unavailable.",
+  "map.universe.controls": "1–5 / arrows / wheel: scale · G / Shift+G: galaxy · Esc: close"
+}

@@ -1,0 +1,9 @@
+.gradle/
+.tooling/
+build/
+run*/
+logs/
+crash-reports/
+*.log
+.idea/
+.vscode/

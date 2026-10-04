@@ -1,0 +1,69 @@
+// Opt-in ordinary dedicated lifecycle fixture; excluded from the library jar.
+if (providers.gradleProperty('gravityRuntimeTests').map { it.toBoolean() }.getOrElse(false)) {
+    def runtimeId = providers.gradleProperty('gravityRuntimeRunId').getOrElse('compile-only')
+    def runtimeNonce = providers.gradleProperty('gravityRuntimeNonce').getOrElse('compile_only_nonce')
+    def runtimeScenario = providers.gradleProperty('gravityRuntimeScenario').getOrElse('compile-only')
+    if (!(runtimeId ==~ /[A-Za-z0-9_-]{1,64}/)) throw new GradleException('Invalid gravity runtime run ID')
+    if (!(runtimeNonce ==~ /[A-Za-z0-9_-]{16,80}/)) throw new GradleException('Invalid gravity runtime nonce')
+    if (!(runtimeScenario in ['compile-only','unload','restart-write','restart-read']))
+        throw new GradleException('Unknown gravity runtime scenario')
+    sourceSets {
+        gravityRuntimeTest {
+            java.setSrcDirs([file('src/gravityRuntimeTest/java')])
+            resources.setSrcDirs([file('src/gravityRuntimeTest/resources')])
+        }
+    }
+    neoForge {
+        addModdingDependenciesTo sourceSets.gravityRuntimeTest
+        mods { universe_gravity_runtime_test { sourceSet sourceSets.gravityRuntimeTest } }
+        runs {
+            gravityRuntimeProbeServer {
+                server()
+                sourceSet = sourceSets.gravityRuntimeTest
+                gameDirectory = file(".tooling/gravity-runtime-runs/${runtimeId}/server")
+                programArgument '--nogui'
+                systemProperty 'universe.demo', 'false'
+                systemProperty 'universe.clientProbe.enabled', 'false'
+                systemProperty 'universe.gravityRuntime.enabled', 'true'
+                systemProperty 'universe.gravityRuntime.scenario', runtimeScenario
+                systemProperty 'universe.gravityRuntime.runId', runtimeId
+                systemProperty 'universe.gravityRuntime.nonce', runtimeNonce
+                systemProperty 'universe.gravityRuntime.artifacts', file('.tooling/gravity-runtime-probes').absolutePath
+            }
+        }
+    }
+    dependencies { gravityRuntimeTestImplementation sourceSets.main.output }
+    tasks.register('exportGravityRuntimeLaunch') {
+        dependsOn 'gravityRuntimeTestClasses', 'prepareGravityRuntimeProbeServerRun'
+        doLast {
+            if (runtimeScenario == 'compile-only') throw new GradleException('Explicit runtime scenario required for launch')
+            def launch = tasks.named('runGravityRuntimeProbeServer').get()
+            def bundle = file(".tooling/gravity-runtime-launches/${runtimeId}")
+            bundle.parentFile.mkdirs()
+            java.nio.file.Files.createDirectory(bundle.toPath())
+            def rawArgs = (["@${file('build/moddev/gravityRuntimeProbeServerRunVmArgs.txt').absolutePath}"]
+                    + launch.allJvmArgs + launch.jvmArgumentProviders.collectMany { it.asArguments().toList() }
+                    + ['-cp', launch.classpathProvider.asPath, launch.mainClass.get()] + launch.args)
+            def frozenArgs = rawArgs.collect { arg ->
+                def value = arg.toString()
+                if (value.startsWith('@')) {
+                    def original = file(value.substring(1))
+                    def saved = new File(bundle, original.name)
+                    java.nio.file.Files.copy(original.toPath(), saved.toPath())
+                    return '@' + saved.absolutePath
+                }
+                return value
+            }
+            def data = [
+                runId: runtimeId, nonce: runtimeNonce, scenario: runtimeScenario,
+                executable: launch.javaLauncher.get().executablePath.asFile.absolutePath,
+                arguments: frozenArgs,
+                workingDirectory: launch.gameDirectory.get().asFile.absolutePath,
+                environment: launch.environmentProperty.get()
+            ]
+            def target = file(".tooling/gravity-runtime-launches/${runtimeId}.json")
+            target.parentFile.mkdirs()
+            target.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(data))
+        }
+    }
+}

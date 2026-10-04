@@ -1,0 +1,22 @@
+{
+  "key.categories.universe": "Universe",
+  "key.universe.map": "Открыть карту Universe",
+  "map.universe.title": "Карта Universe — прототип",
+  "map.universe.demo": "Демонстрационные данные — реальных открытий нет",
+  "map.universe.catalog_notice": "Сведения каталога, не посещаемые миры",
+  "map.universe.catalog_counts": "Сектор (0, 0, 0): систем — %s, тел — %s. Сетка демонстрационная; открытия и доступность путешествий не подтверждены.",
+  "map.universe.catalog_waiting": "Запрос каталога сектора (0, 0, 0). Сетка демонстрационная; открытия, сканирование, метки и маршруты недоступны.",
+  "map.universe.catalog_timeout": "Ответ каталога не получен. Сетка демонстрационная. Откройте карту заново для повтора; открытия и путешествия не подтверждены.",
+  "map.universe.galaxy.milky_way": "Млечный Путь",
+  "map.universe.galaxy.silent_crown": "Безмолвный Венец",
+  "map.universe.galaxy.crimson_forge": "Багровая Кузня",
+  "map.universe.scale.chunks": "1: Чанки",
+  "map.universe.scale.regions": "2: Регионы",
+  "map.universe.scale.planet": "3: Планета",
+  "map.universe.scale.system": "4: Система",
+  "map.universe.scale.sectors": "5: Секторы",
+  "map.universe.status.prototype": "Статус: прототип интерфейса; путешествие недоступно",
+  "map.universe.status.planned": "Статус: planned (запланировано); галактика недоступна",
+  "map.universe.no_data": "Серверный адаптер карты не подключен. Сетка демонстрирует интерфейс. Открытия, сканирование, метки и маршруты недоступны.",
+  "map.universe.controls": "1–5 / стрелки / колесо: масштаб · G / Shift+G: галактика · Esc: закрыть"
+}

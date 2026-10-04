@@ -1,0 +1,190 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.107'
+}
+
+version = mod_version
+group = mod_group_id
+base { archivesName = mod_id }
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+java { withSourcesJar() }
+repositories { mavenCentral() }
+neoForge {
+    version = project.neo_version
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+        serverSmoke {
+            server()
+            gameDirectory = file('run-smoke')
+            programArguments.addAll '--nogui', '--initSettings'
+        }
+        gameTestServer {
+            type = 'gameTestServer'
+            gameDirectory = file('run-gametest')
+            systemProperty 'neoforge.enabledGameTestNamespaces', 'universe'
+        }
+        configureEach {
+            logLevel = org.slf4j.event.Level.INFO
+            systemProperty 'universe.demo', 'true'
+        }
+    }
+    mods { universe { sourceSet(sourceSets.main) } }
+}
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.11.4')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+tasks.named('test', Test) { useJUnitPlatform() }
+// Development examples remain available to runs/tests, never become library content.
+tasks.named('jar', Jar) {
+    exclude 'dev/heiko/universe/client/**'
+    exclude 'dev/heiko/universe/gametest/**'
+    exclude 'data/universe/dimension/**'
+    exclude 'data/universe/dimension_type/**'
+    exclude 'data/universe/worldgen/biome/vacuum.json'
+    exclude 'data/universe/structure/**'
+}
+def verifyCoreJar = tasks.register('verifyCoreJar') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def contents = zipTree(tasks.named('jar', Jar).get().archiveFile.get().asFile)
+        def forbidden = contents.matching {
+            include 'dev/heiko/universe/client/**'
+            include 'dev/heiko/universe/gametest/**'
+            include 'data/universe/dimension/**'
+            include 'data/universe/dimension_type/**'
+            include 'data/universe/structure/**'
+            include 'data/universe/worldgen/biome/vacuum.json'
+        }
+        if (!forbidden.isEmpty()) throw new GradleException('Core jar contains development gameplay')
+    }
+}
+tasks.named('check') { dependsOn verifyCoreJar }
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+
+// Opt-in native Sable probe; none of these dependencies ship with Universe Core.
+if (providers.gradleProperty('sableTests').map { it.toBoolean() }.getOrElse(false)) {
+    repositories {
+        maven { url = 'https://maven.ryanhcode.dev/releases' }
+        maven { url = 'https://maven.createmod.net' }
+        maven { url = 'https://maven.ithundxr.dev/snapshots' }
+    }
+    sourceSets { sableTest }
+    neoForge {
+        addModdingDependenciesTo sourceSets.sableTest
+        mods {
+            universe_sable_test { sourceSet sourceSets.sableTest }
+        }
+        runs {
+            sableGameTestServer {
+                type = 'gameTestServer'
+                sourceSet = sourceSets.sableTest
+                gameDirectory = file('run-sable-gametest')
+                systemProperty 'neoforge.enabledGameTestNamespaces', 'universe_sable_test'
+            }
+        }
+    }
+    dependencies {
+        sableTestImplementation sourceSets.main.output
+        sableTestImplementation('dev.ryanhcode.sable:sable-neoforge-1.21.1:2.0.5') { transitive = false }
+        sableTestCompileOnly('dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0') { transitive = false }
+        sableTestRuntimeOnly('com.simibubi.create:create-1.21.1:6.0.10-280') { transitive = false }
+        sableTestRuntimeOnly('net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1') { transitive = false }
+        sableTestRuntimeOnly('dev.engine-room.flywheel:flywheel-neoforge-1.21.1:1.0.6') { transitive = false }
+        sableTestRuntimeOnly('com.tterrag.registrate:Registrate:MC1.21-1.3.0+67') { transitive = false }
+    }
+}
+
+// Real loopback client/server fixture, opt-in and excluded from the library jar.
+if (providers.gradleProperty('sableClientTests').map { it.toBoolean() }.getOrElse(false)) {
+    def probeId = providers.gradleProperty('clientProbeRunId').getOrElse('compile-only')
+    def probeNonce = providers.gradleProperty('clientProbeNonce').getOrElse('compile_only_nonce')
+    def probeDynamic = providers.gradleProperty('clientProbeDynamic').map { it.toBoolean() }.getOrElse(false)
+    if (!(probeId ==~ /[A-Za-z0-9_-]{1,64}/)) throw new GradleException('Invalid client probe run ID')
+    if (!(probeNonce ==~ /[A-Za-z0-9_-]{16,80}/)) throw new GradleException('Invalid client probe nonce')
+    repositories {
+        maven { url = 'https://maven.ryanhcode.dev/releases' }
+        maven { url = 'https://maven.createmod.net' }
+        maven { url = 'https://maven.ithundxr.dev/snapshots' }
+    }
+    sourceSets { sableClientTest }
+    neoForge {
+        addModdingDependenciesTo sourceSets.sableClientTest
+        mods { universe_sable_client_test { sourceSet sourceSets.sableClientTest } }
+        runs {
+            sableClientProbeServer {
+                server()
+                sourceSet = sourceSets.sableClientTest
+                gameDirectory = file(".tooling/client-runs/${probeId}/server")
+                programArgument '--nogui'
+                systemProperty 'universe.clientProbe.gravityStop', probeDynamic ? 'false' : 'true'
+            }
+            sableClientProbeA {
+                client()
+                sourceSet = sourceSets.sableClientTest
+                gameDirectory = file(".tooling/client-runs/${probeId}/client")
+                programArguments.addAll '--quickPlayMultiplayer', '127.0.0.1:25575',
+                        '--username', 'UniverseProbeA', '--width', '960', '--height', '540'
+            }
+            configureEach {
+                if (name == 'sableClientProbeServer' || name == 'sableClientProbeA') {
+                    systemProperty 'universe.clientProbe.enabled', 'true'
+                    systemProperty 'universe.clientProbe.runId', probeId
+                    systemProperty 'universe.clientProbe.nonce', probeNonce
+                    systemProperty 'universe.clientProbe.dynamic', probeDynamic.toString()
+                    systemProperty 'universe.clientProbe.artifacts', file('.tooling/client-probes').absolutePath
+                }
+            }
+        }
+    }
+    dependencies {
+        sableClientTestImplementation sourceSets.main.output
+        sableClientTestImplementation('dev.ryanhcode.sable:sable-neoforge-1.21.1:2.0.5') { transitive = false }
+        sableClientTestCompileOnly('dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0') { transitive = false }
+        sableClientTestRuntimeOnly('com.simibubi.create:create-1.21.1:6.0.10-280') { transitive = false }
+        sableClientTestRuntimeOnly('net.createmod.ponder:ponder-neoforge:1.0.82+mc1.21.1') { transitive = false }
+        sableClientTestRuntimeOnly('dev.engine-room.flywheel:flywheel-neoforge-1.21.1:1.0.6') { transitive = false }
+        sableClientTestRuntimeOnly('com.tterrag.registrate:Registrate:MC1.21-1.3.0+67') { transitive = false }
+    }
+    // Export configured launch data once, then run the JVMs without concurrent Gradle locks.
+    tasks.register('exportSableClientProbeLaunches') {
+        dependsOn 'sableClientTestClasses', 'prepareSableClientProbeServerRun', 'prepareSableClientProbeARun'
+        doLast {
+            def launchData = [:]
+            def bundle = file(".tooling/client-launches/${probeId}")
+            bundle.parentFile.mkdirs()
+            java.nio.file.Files.createDirectory(bundle.toPath())
+            ['server': 'runSableClientProbeServer', 'client': 'runSableClientProbeA'].each { role, taskName ->
+                def launch = tasks.named(taskName).get()
+                def rawArgs = (["@${file('build/moddev/' + (role == 'server' ? 'sableClientProbeServer' : 'sableClientProbeA') + 'RunVmArgs.txt').absolutePath}"]
+                            + launch.allJvmArgs + launch.jvmArgumentProviders.collectMany { it.asArguments().toList() }
+                            + ['-cp', launch.classpathProvider.asPath, launch.mainClass.get()] + launch.args)
+                def frozenArgs = rawArgs.collect { arg ->
+                    def value = arg.toString()
+                    if (value.startsWith('@')) {
+                        def original = file(value.substring(1))
+                        def saved = new File(bundle, role + '-' + original.name)
+                        java.nio.file.Files.copy(original.toPath(), saved.toPath())
+                        return '@' + saved.absolutePath
+                    }
+                    return value
+                }
+                launchData[role] = [
+                    runId: probeId, nonce: probeNonce, dynamic: probeDynamic,
+                    executable: launch.javaLauncher.get().executablePath.asFile.absolutePath,
+                    arguments: frozenArgs,
+                    workingDirectory: launch.gameDirectory.get().asFile.absolutePath,
+                    environment: launch.environmentProperty.get()
+                ]
+            }
+            def target = file(".tooling/client-launches/${probeId}.json")
+            target.parentFile.mkdirs()
+            target.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(launchData))
+        }
+    }
+}
+
+apply from: 'tools/gravity-runtime-profile.gradle'

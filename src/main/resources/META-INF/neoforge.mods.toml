@@ -1,0 +1,21 @@
+modLoader="javafml"
+loaderVersion="[4,)"
+license="All Rights Reserved"
+[[mods]]
+modId="universe"
+version="0.1.0-alpha.5"
+displayName="Universe Core"
+authors="Hurtify"
+description='''Extensible core for planetary definitions, materials, atmosphere, effects, streaming and spatial objects.'''
+[[dependencies.universe]]
+modId="neoforge"
+type="required"
+versionRange="[21.1.251,)"
+ordering="NONE"
+side="BOTH"
+[[dependencies.universe]]
+modId="minecraft"
+type="required"
+versionRange="[1.21.1,1.21.2)"
+ordering="NONE"
+side="BOTH"
